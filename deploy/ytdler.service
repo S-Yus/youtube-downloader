@@ -1,0 +1,27 @@
+# YouTube Downloader 本体 (gunicorn) の systemd ユーザーサービス
+#
+# 使い方:
+#   1. パスを自分の環境に合わせて編集
+#   2. cp deploy/ytdler.service ~/.config/systemd/user/
+#   3. 認証情報を ~/.config/ytdler/env に作成 (chmod 600):
+#        APP_USERNAME=yourname
+#        APP_PASSWORD=<ランダムパスフレーズ>
+#        SECRET_KEY=<python -c "import secrets; print(secrets.token_hex(32))">
+#   4. systemctl --user daemon-reload
+#      systemctl --user enable --now ytdler.service
+#   5. loginctl enable-linger $USER   # ログアウト後・再起動後も動かし続ける
+
+[Unit]
+Description=YouTube Downloader (gunicorn)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/workspace/projects/yt-dler
+EnvironmentFile=%h/.config/ytdler/env
+ExecStart=%h/workspace/projects/yt-dler/.venv/bin/gunicorn -w 1 --threads 8 -b 127.0.0.1:5000 app:app
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

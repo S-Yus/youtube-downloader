@@ -98,6 +98,38 @@ APP_USERNAME=... APP_PASSWORD=... SECRET_KEY=... gunicorn -w 1 --threads 8 -b 12
 
 ※ ジョブ管理・レート制限をメモリ上に持つため、ワーカー数は `-w 1` のまま `--threads` で並行性を確保してください。
 
+#### 常時公開する(systemd サービス化)
+
+`deploy/` に systemd ユーザーサービスのテンプレートがあります。
+
+```bash
+# 本体 (gunicorn) を常駐化
+mkdir -p ~/.config/ytdler ~/.config/systemd/user
+cat > ~/.config/ytdler/env <<EOF
+APP_USERNAME=yourname
+APP_PASSWORD=$(python -c "import secrets; print(secrets.token_urlsafe(24))")
+SECRET_KEY=$(python -c "import secrets; print(secrets.token_hex(32))")
+EOF
+chmod 600 ~/.config/ytdler/env
+cp deploy/ytdler.service ~/.config/systemd/user/   # パスは環境に合わせて編集
+systemctl --user daemon-reload
+systemctl --user enable --now ytdler.service
+loginctl enable-linger $USER   # ログアウト後・OS再起動後も自動起動
+```
+
+トンネルの常駐は2通り:
+
+- **固定URLにしたい(推奨): Tailscale Funnel**
+  ```bash
+  curl -fsSL https://tailscale.com/install.sh | sh
+  sudo tailscale up            # 表示されるURLでログイン
+  sudo tailscale funnel --bg 5000
+  ```
+  `https://<マシン名>.<tailnet名>.ts.net` という**固定URL**で公開されます(`--bg` で再起動後も維持)。
+- **アカウント不要: Cloudflareクイックトンネル** — `deploy/ytdler-tunnel.service` を使用(手順はファイル内コメント参照)。ただしURLは再起動ごとに変わります。
+
+WSL2の場合は、Windows側の「スタートアップ」に `wsl.exe -d Ubuntu --exec dbus-launch true` などを登録してWSLをPC起動時に立ち上げてください(WSLが停止するとサーバーも止まります)。
+
 #### 注意
 
 - ⚠ RenderやRailwayなどのクラウドにデプロイすると、データセンターIPがYouTubeにボット判定されてダウンロードがほぼ失敗します。自宅PCから動かすのが確実です

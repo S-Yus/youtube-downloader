@@ -1,0 +1,26 @@
+# Cloudflare クイックトンネルの systemd ユーザーサービス
+# (URLは起動ごとに変わる。固定URLにするなら Tailscale Funnel か名前付きトンネルを推奨)
+#
+# 使い方:
+#   1. cloudflared をインストール:
+#        curl -L -o ~/.local/bin/cloudflared \
+#          https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+#        chmod +x ~/.local/bin/cloudflared
+#   2. cp deploy/ytdler-tunnel.service ~/.config/systemd/user/
+#      systemctl --user daemon-reload
+#      systemctl --user enable --now ytdler-tunnel.service
+#   3. 公開URLの確認:
+#        journalctl --user -u ytdler-tunnel.service | grep -o 'https://.*trycloudflare.com' | tail -1
+
+[Unit]
+Description=Cloudflare quick tunnel for YouTube Downloader
+After=network-online.target ytdler.service
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/cloudflared tunnel --url http://localhost:5000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
