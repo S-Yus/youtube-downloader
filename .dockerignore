@@ -1,0 +1,9 @@
+.git
+.venv
+__pycache__
+data
+main.py
+deploy
+README.md
+LICENSE
+.env

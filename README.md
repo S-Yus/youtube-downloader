@@ -130,9 +130,44 @@ loginctl enable-linger $USER   # ログアウト後・OS再起動後も自動起
 
 WSL2の場合は、Windows側の「スタートアップ」に `wsl.exe -d Ubuntu --exec dbus-launch true` などを登録してWSLをPC起動時に立ち上げてください(WSLが停止するとサーバーも止まります)。
 
+### 外部サーバー(VPS)にデプロイする
+
+Docker一式(Dockerfile / docker-compose.yml)を同梱しています。VPS(さくらのVPS、ConoHa、Vultr、Lightsail等)での手順:
+
+```bash
+# VPS上で (Docker / docker compose はインストール済みとする)
+git clone https://github.com/S-Yus/youtube-downloader.git
+cd youtube-downloader
+cp .env.example .env
+nano .env          # APP_USERNAME / APP_PASSWORD / SECRET_KEY を設定
+docker compose up -d --build
+```
+
+これで `127.0.0.1:5000` で待ち受けます。HTTPS化はCaddyが最も簡単です(ドメインのAレコードをVPSに向けた上で):
+
+```bash
+sudo apt install -y caddy
+echo 'dl.example.com {
+    reverse_proxy 127.0.0.1:5000
+}' | sudo tee /etc/caddy/Caddyfile
+sudo systemctl restart caddy
+```
+
+Let's Encrypt証明書が自動取得され、`https://dl.example.com` で公開されます。
+
+#### ⚠ 重要: VPSのIPはYouTubeにボット判定されやすい
+
+データセンターIPからのアクセスは「Sign in to confirm you're not a bot」で失敗することが多いため、**自分のYouTube cookieを渡して回避**します:
+
+1. 自分のPCのブラウザで、拡張機能「[Get cookies.txt LOCALLY](https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc)」等でyoutube.comのcookieを **Netscape形式** でエクスポート
+2. VPSの `youtube-downloader/data/cookies.txt` に配置(composeが `COOKIES_FILE=/data/cookies.txt` を渡します)
+3. `docker compose restart`
+
+cookieはあなたのYouTubeアカウントそのものなので、**絶対に他人に渡さず、リポジトリにもコミットしないでください**(`data/` はgitignore済み)。それでも失敗する場合は `docker compose build --no-cache` でyt-dlpを最新化してください。
+
 #### 注意
 
-- ⚠ RenderやRailwayなどのクラウドにデプロイすると、データセンターIPがYouTubeにボット判定されてダウンロードがほぼ失敗します。自宅PCから動かすのが確実です
+- cookieを設定してもVPSのIP帯によっては失敗することがあります。その場合は自宅PC + Cloudflare Tunnel / Tailscale Funnel構成(上記)が確実です
 - URLとパスフレーズは他人に教えないでください(本ツールは1ユーザー前提です)
 
 ### デスクトップ版(PyQt6)

@@ -62,6 +62,8 @@ app.secret_key = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
+if os.environ.get("HTTPS_ONLY") == "1":  # HTTPS配信時はcookieをSecureにする
+    app.config["SESSION_COOKIE_SECURE"] = True
 
 # ----------------------------------------------------------------------------
 # ログイン試行のレート制限(総当たり攻撃対策)
@@ -118,7 +120,20 @@ def login_required(f):
         return f(*args, **kwargs)
     return wrapper
 
-DOWNLOAD_DIR = os.path.join(os.path.expanduser("~"), "Downloads", "YouTubeDownloader")
+DOWNLOAD_DIR = os.environ.get(
+    "DOWNLOAD_DIR", os.path.join(os.path.expanduser("~"), "Downloads", "YouTubeDownloader")
+)
+
+# YouTubeのcookieファイル(Netscape形式)。VPSなどデータセンターIPからの
+# ボット判定を回避するために、自分のブラウザからエクスポートしたcookieを指定する。
+COOKIES_FILE = os.environ.get("COOKIES_FILE", "")
+
+
+def base_ydl_opts() -> dict:
+    opts = {"quiet": True, "no_warnings": True, "noplaylist": True}
+    if COOKIES_FILE and os.path.isfile(COOKIES_FILE):
+        opts["cookiefile"] = COOKIES_FILE
+    return opts
 
 # YouTube動画ページ判定用の正規表現
 VIDEO_URL_PATTERNS = [
@@ -168,13 +183,13 @@ def _download_worker(job_id: str, url: str, mode: str) -> None:
         elif d.get("status") == "finished":
             _update_job(job_id, status="processing", percent=100.0, speed="後処理中...")
 
-    ydl_opts = {
-        "outtmpl": os.path.join(job_dir, "%(title)s.%(ext)s"),
-        "progress_hooks": [hook],
-        "noplaylist": True,
-        "quiet": True,
-        "no_warnings": True,
-    }
+    ydl_opts = base_ydl_opts()
+    ydl_opts.update(
+        {
+            "outtmpl": os.path.join(job_dir, "%(title)s.%(ext)s"),
+            "progress_hooks": [hook],
+        }
+    )
 
     if mode == "best":
         ydl_opts["format"] = "bestvideo+bestaudio/best"
@@ -272,7 +287,7 @@ def api_info():
     if not is_video_url(url):
         return jsonify({"error": "YouTubeの動画URLではありません。watch?v= / youtu.be / shorts のURLを入力してください。"}), 400
     try:
-        with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "noplaylist": True}) as ydl:
+        with yt_dlp.YoutubeDL(base_ydl_opts()) as ydl:
             info = ydl.extract_info(url, download=False)
         return jsonify(
             {

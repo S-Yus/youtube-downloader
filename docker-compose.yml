@@ -1,0 +1,15 @@
+services:
+  ytdler:
+    build: .
+    container_name: ytdler
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5000:5000"   # リバースプロキシ(Caddy等)経由で公開する前提
+    environment:
+      APP_USERNAME: ${APP_USERNAME:?set in .env}
+      APP_PASSWORD: ${APP_PASSWORD:?set in .env}
+      SECRET_KEY: ${SECRET_KEY:?set in .env}
+      HTTPS_ONLY: "1"
+      COOKIES_FILE: /data/cookies.txt
+    volumes:
+      - ./data:/data
