@@ -20,11 +20,14 @@ import os
 import re
 import sys
 import glob
+import hmac
 import uuid
 import shutil
+import secrets
 import threading
+from functools import wraps
 
-from flask import Flask, jsonify, request, send_file
+from flask import Flask, jsonify, redirect, request, send_file, session
 
 try:
     import yt_dlp
@@ -35,6 +38,39 @@ except ImportError:
 app = Flask(__name__)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# ----------------------------------------------------------------------------
+# 認証設定
+#   環境変数 APP_USERNAME / APP_PASSWORD でログイン情報を設定する。
+#   APP_PASSWORD が未設定の場合はランダムなパスワードを生成して起動時に表示する。
+#   SECRET_KEY はセッション署名用(未設定なら起動ごとにランダム生成)。
+# ----------------------------------------------------------------------------
+APP_USERNAME = os.environ.get("APP_USERNAME", "admin")
+APP_PASSWORD = os.environ.get("APP_PASSWORD")
+if not APP_PASSWORD:
+    APP_PASSWORD = secrets.token_urlsafe(12)
+    print("=" * 60)
+    print("APP_PASSWORD が未設定のため、パスワードを自動生成しました:")
+    print(f"  ユーザー名: {APP_USERNAME}")
+    print(f"  パスワード: {APP_PASSWORD}")
+    print("固定したい場合は環境変数 APP_USERNAME / APP_PASSWORD を設定してください。")
+    print("=" * 60)
+
+app.secret_key = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+
+
+def login_required(f):
+    """未ログインならページは /login へリダイレクト、APIは401 JSONを返す。"""
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if not session.get("logged_in"):
+            if request.path.startswith("/api/"):
+                return jsonify({"error": "ログインが必要です。", "auth": False}), 401
+            return redirect("/login")
+        return f(*args, **kwargs)
+    return wrapper
 
 DOWNLOAD_DIR = os.path.join(os.path.expanduser("~"), "Downloads", "YouTubeDownloader")
 
@@ -141,11 +177,38 @@ def _download_worker(job_id: str, url: str, mode: str) -> None:
 # ----------------------------------------------------------------------------
 
 @app.route("/")
+@login_required
 def index():
     return send_file(os.path.join(BASE_DIR, "index.html"))
 
 
+@app.route("/login", methods=["GET"])
+def login_page():
+    if session.get("logged_in"):
+        return redirect("/")
+    return send_file(os.path.join(BASE_DIR, "login.html"))
+
+
+@app.route("/api/login", methods=["POST"])
+def api_login():
+    data = request.json or {}
+    username = data.get("username", "")
+    password = data.get("password", "")
+    if hmac.compare_digest(username, APP_USERNAME) and hmac.compare_digest(password, APP_PASSWORD):
+        session["logged_in"] = True
+        session.permanent = True
+        return jsonify({"ok": True})
+    return jsonify({"error": "ユーザー名またはパスワードが違います。"}), 401
+
+
+@app.route("/api/logout", methods=["POST"])
+def api_logout():
+    session.clear()
+    return jsonify({"ok": True})
+
+
 @app.route("/api/info", methods=["POST"])
+@login_required
 def api_info():
     """動画のタイトル・サムネイル等のメタ情報を取得する。"""
     url = (request.json or {}).get("url", "").strip()
@@ -170,6 +233,7 @@ def api_info():
 
 
 @app.route("/api/download", methods=["POST"])
+@login_required
 def api_download():
     """ダウンロードジョブを開始する。"""
     data = request.json or {}
@@ -198,6 +262,7 @@ def api_download():
 
 
 @app.route("/api/progress/<job_id>")
+@login_required
 def api_progress(job_id: str):
     with jobs_lock:
         job = jobs.get(job_id)
@@ -207,6 +272,7 @@ def api_progress(job_id: str):
 
 
 @app.route("/api/file/<job_id>")
+@login_required
 def api_file(job_id: str):
     """完了したファイルをブラウザへダウンロードさせる。"""
     with jobs_lock:
@@ -223,4 +289,10 @@ if __name__ == "__main__":
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
     print(f"保存先: {DOWNLOAD_DIR}")
     print("ブラウザで http://localhost:5000 を開いてください。")
-    app.run(host="127.0.0.1", port=5000, debug=False, threaded=True)
+    # 外部公開時は HOST=0.0.0.0 を設定する(PORT も環境変数で変更可)
+    app.run(
+        host=os.environ.get("HOST", "127.0.0.1"),
+        port=int(os.environ.get("PORT", "5000")),
+        debug=False,
+        threaded=True,
+    )

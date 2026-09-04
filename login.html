@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ログイン — YouTube Downloader</title>
+<style>
+  :root {
+    --bg: #0F0F0F;
+    --surface: #212121;
+    --border: #303030;
+    --text: #ffffff;
+    --text-dim: #aaaaaa;
+    --red: #FF0000;
+    --blue: #3EA6FF;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", "Yu Gothic UI", "Hiragino Sans", sans-serif;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .login-card {
+    background: var(--surface);
+    border: 2px solid var(--border);
+    border-radius: 24px;
+    padding: 40px 36px;
+    width: 100%;
+    max-width: 380px;
+    text-align: center;
+    animation: fadeUp .4s ease;
+  }
+  .logo {
+    width: 60px; height: 44px;
+    background: var(--red);
+    border-radius: 14px;
+    display: inline-flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 28px rgba(255,0,0,0.45);
+    margin-bottom: 16px;
+  }
+  .logo::after {
+    content: "";
+    border-style: solid;
+    border-width: 10px 0 10px 17px;
+    border-color: transparent transparent transparent #fff;
+    margin-left: 3px;
+  }
+  h1 { font-size: 20px; margin-bottom: 6px; }
+  h1 span { color: var(--red); }
+  .sub { color: var(--text-dim); font-size: 13px; margin-bottom: 26px; }
+  input {
+    width: 100%;
+    background: #0F0F0F;
+    border: 2px solid var(--border);
+    border-radius: 14px;
+    padding: 13px 16px;
+    color: var(--text);
+    font-size: 15px;
+    outline: none;
+    margin-bottom: 14px;
+    transition: border-color .2s, box-shadow .2s;
+  }
+  input:focus {
+    border-color: var(--blue);
+    box-shadow: 0 0 0 3px rgba(62,166,255,0.2);
+  }
+  button {
+    width: 100%;
+    background: var(--red);
+    color: #fff;
+    border: none;
+    border-radius: 14px;
+    padding: 14px;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 0 20px rgba(255,0,0,0.35);
+    transition: background .2s, transform .1s;
+  }
+  button:hover { background: #ff4e45; }
+  button:active { transform: scale(0.98); }
+  button:disabled { background: #1a1a1a; color: #555; box-shadow: none; cursor: not-allowed; }
+  .error {
+    display: none;
+    color: #ff6b6b;
+    font-size: 13px;
+    margin-top: 14px;
+    line-height: 1.5;
+  }
+  .error.show { display: block; animation: fadeUp .25s ease; }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+</style>
+</head>
+<body>
+  <div class="login-card">
+    <div class="logo"></div>
+    <h1>You<span>Tube</span> Downloader</h1>
+    <p class="sub">続行するにはログインしてください</p>
+    <form id="loginForm">
+      <input id="username" type="text" placeholder="ユーザー名" autocomplete="username" required>
+      <input id="password" type="password" placeholder="パスワード" autocomplete="current-password" required>
+      <button id="loginBtn" type="submit">ログイン</button>
+    </form>
+    <div class="error" id="error"></div>
+  </div>
+
+<script>
+document.getElementById("loginForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById("loginBtn");
+  const errorEl = document.getElementById("error");
+  errorEl.classList.remove("show");
+  btn.disabled = true;
+  btn.textContent = "ログイン中...";
+  try {
+    const res = await fetch("/api/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        username: document.getElementById("username").value,
+        password: document.getElementById("password").value,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "ログインに失敗しました。");
+    location.href = "/";
+  } catch (err) {
+    errorEl.textContent = err.message;
+    errorEl.classList.add("show");
+    btn.disabled = false;
+    btn.textContent = "ログイン";
+  }
+});
+</script>
+</body>
+</html>

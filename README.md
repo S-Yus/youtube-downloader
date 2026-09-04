@@ -43,9 +43,36 @@ python app.py
 起動したらブラウザで **http://localhost:5000** を開いてください。
 (`index.html` を直接ダブルクリックして開いても動きません。ダウンロード処理はPythonサーバー側で行うためです)
 
-1. YouTubeのURLを貼り付けて「解析」
-2. 「最高画質 / 720p / MP3」のカードから形式を選択
-3. 「ダウンロード開始」→ 進捗バーが完了したら「ファイルを保存」
+1. ログイン画面でユーザー名・パスワードを入力
+2. YouTubeのURLを貼り付けて「解析」
+3. 「最高画質 / 720p / MP3」のカードから形式を選択
+4. 「ダウンロード開始」→ 進捗バーが完了したら「ファイルを保存」
+
+### ログイン認証
+
+本人だけが使えるよう、全ページ・全APIはログイン必須です。認証情報は環境変数で設定します:
+
+```bash
+export APP_USERNAME=yourname
+export APP_PASSWORD=your-strong-password
+export SECRET_KEY=$(python -c "import secrets; print(secrets.token_hex(32))")
+python app.py
+```
+
+`APP_PASSWORD` を設定しない場合は、起動時にランダムなパスワードが生成されコンソールに表示されます。
+`SECRET_KEY` を固定するとサーバー再起動後もログイン状態が維持されます。
+
+### 外部からアクセスできるように公開する
+
+デフォルトではlocalhostのみ待ち受けます。他の端末や外出先から使う場合:
+
+```bash
+HOST=0.0.0.0 PORT=5000 python app.py
+```
+
+- **おすすめ: [Tailscale](https://tailscale.com/) などのVPN経由** — 自宅PCでサーバーを動かし、自分の端末からだけアクセスできます。インターネットに晒さないため最も安全です
+- インターネットに直接公開する場合は必ず強いパスワードとHTTPS(リバースプロキシ)を併用してください
+- ⚠ RenderやRailwayなどのクラウドにデプロイしても、データセンターIPはYouTubeにボット判定されてダウンロードが失敗することが多く、実用になりません。自宅PC + VPNの構成を推奨します
 
 ### デスクトップ版(PyQt6)
 
