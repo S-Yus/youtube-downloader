@@ -21,10 +21,12 @@ import re
 import sys
 import glob
 import hmac
+import time
 import uuid
 import shutil
 import secrets
 import threading
+from datetime import timedelta
 from functools import wraps
 
 from flask import Flask, jsonify, redirect, request, send_file, session
@@ -48,7 +50,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 APP_USERNAME = os.environ.get("APP_USERNAME", "admin")
 APP_PASSWORD = os.environ.get("APP_PASSWORD")
 if not APP_PASSWORD:
-    APP_PASSWORD = secrets.token_urlsafe(12)
+    APP_PASSWORD = secrets.token_urlsafe(16)
     print("=" * 60)
     print("APP_PASSWORD が未設定のため、パスワードを自動生成しました:")
     print(f"  ユーザー名: {APP_USERNAME}")
@@ -59,6 +61,50 @@ if not APP_PASSWORD:
 app.secret_key = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
+
+# ----------------------------------------------------------------------------
+# ログイン試行のレート制限(総当たり攻撃対策)
+#   同一IPからの連続失敗が MAX_LOGIN_FAILURES 回に達したら LOCKOUT_SECONDS 秒ロック。
+# ----------------------------------------------------------------------------
+MAX_LOGIN_FAILURES = 5
+LOCKOUT_SECONDS = 300
+
+login_failures: dict[str, list] = {}  # {ip: [失敗回数, ロック解除時刻]}
+login_failures_lock = threading.Lock()
+
+
+def client_ip() -> str:
+    """リバースプロキシ/トンネル経由でも実クライアントIPを取得する。"""
+    fwd = request.headers.get("CF-Connecting-IP") or request.headers.get("X-Forwarded-For")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.remote_addr or "unknown"
+
+
+def is_locked_out(ip: str) -> int:
+    """ロック中なら残り秒数を、そうでなければ0を返す。"""
+    with login_failures_lock:
+        rec = login_failures.get(ip)
+        if rec and rec[0] >= MAX_LOGIN_FAILURES:
+            remaining = int(rec[1] - time.time())
+            if remaining > 0:
+                return remaining
+            del login_failures[ip]
+    return 0
+
+
+def record_login_failure(ip: str) -> None:
+    with login_failures_lock:
+        rec = login_failures.setdefault(ip, [0, 0.0])
+        rec[0] += 1
+        if rec[0] >= MAX_LOGIN_FAILURES:
+            rec[1] = time.time() + LOCKOUT_SECONDS
+
+
+def clear_login_failures(ip: str) -> None:
+    with login_failures_lock:
+        login_failures.pop(ip, None)
 
 
 def login_required(f):
@@ -191,13 +237,24 @@ def login_page():
 
 @app.route("/api/login", methods=["POST"])
 def api_login():
+    ip = client_ip()
+    remaining = is_locked_out(ip)
+    if remaining > 0:
+        return jsonify(
+            {"error": f"ログイン失敗が続いたためロックされています。{remaining}秒後に再試行してください。"}
+        ), 429
+
     data = request.json or {}
     username = data.get("username", "")
     password = data.get("password", "")
     if hmac.compare_digest(username, APP_USERNAME) and hmac.compare_digest(password, APP_PASSWORD):
+        clear_login_failures(ip)
         session["logged_in"] = True
         session.permanent = True
         return jsonify({"ok": True})
+
+    record_login_failure(ip)
+    time.sleep(1)  # 総当たりを遅くする
     return jsonify({"error": "ユーザー名またはパスワードが違います。"}), 401
 
 

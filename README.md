@@ -62,17 +62,46 @@ python app.py
 `APP_PASSWORD` を設定しない場合は、起動時にランダムなパスワードが生成されコンソールに表示されます。
 `SECRET_KEY` を固定するとサーバー再起動後もログイン状態が維持されます。
 
-### 外部からアクセスできるように公開する
+### インターネットに公開する(本人専用)
 
-デフォルトではlocalhostのみ待ち受けます。他の端末や外出先から使う場合:
+全ページ・全APIがログイン必須で、ログイン試行は同一IPで5回失敗すると5分間ロックされます。
+公開する場合は**必ずランダムな長いパスフレーズ**を設定してください:
 
 ```bash
-HOST=0.0.0.0 PORT=5000 python app.py
+# ランダムパスフレーズの生成例
+python -c "import secrets; print(secrets.token_urlsafe(24))"
 ```
 
-- **おすすめ: [Tailscale](https://tailscale.com/) などのVPN経由** — 自宅PCでサーバーを動かし、自分の端末からだけアクセスできます。インターネットに晒さないため最も安全です
-- インターネットに直接公開する場合は必ず強いパスワードとHTTPS(リバースプロキシ)を併用してください
-- ⚠ RenderやRailwayなどのクラウドにデプロイしても、データセンターIPはYouTubeにボット判定されてダウンロードが失敗することが多く、実用になりません。自宅PC + VPNの構成を推奨します
+#### おすすめ: 自宅PC + Cloudflare Tunnel
+
+自宅の回線(住宅用IP)から動かすためYouTubeにブロックされず、ポート開放も不要で、自動的にHTTPS化されます。
+
+```bash
+# 1. サーバーを起動(localhostのままでOK)
+APP_USERNAME=yourname APP_PASSWORD='生成したパスフレーズ' SECRET_KEY='固定のランダム値' python app.py
+
+# 2. 別ターミナルで cloudflared を起動(https://は自動付与)
+cloudflared tunnel --url http://localhost:5000
+```
+
+表示された `https://xxxx.trycloudflare.com` のURLに、スマホや外出先のPCからアクセスできます。
+(このクイックトンネルのURLは起動ごとに変わります。固定URLにしたい場合はCloudflareアカウント+独自ドメインで「名前付きトンネル」を作成してください)
+
+cloudflaredのインストール: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/
+
+#### 常時公開する場合は gunicorn を推奨
+
+```bash
+pip install gunicorn
+APP_USERNAME=... APP_PASSWORD=... SECRET_KEY=... gunicorn -w 1 --threads 8 -b 127.0.0.1:5000 app:app
+```
+
+※ ジョブ管理・レート制限をメモリ上に持つため、ワーカー数は `-w 1` のまま `--threads` で並行性を確保してください。
+
+#### 注意
+
+- ⚠ RenderやRailwayなどのクラウドにデプロイすると、データセンターIPがYouTubeにボット判定されてダウンロードがほぼ失敗します。自宅PCから動かすのが確実です
+- URLとパスフレーズは他人に教えないでください(本ツールは1ユーザー前提です)
 
 ### デスクトップ版(PyQt6)
 

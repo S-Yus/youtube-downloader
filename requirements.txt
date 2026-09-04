@@ -1,4 +1,5 @@
 flask
 yt-dlp
+gunicorn
 PyQt6
 PyQt6-WebEngine
