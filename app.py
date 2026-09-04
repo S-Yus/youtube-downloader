@@ -24,7 +24,7 @@ import uuid
 import shutil
 import threading
 
-from flask import Flask, jsonify, render_template, request, send_file
+from flask import Flask, jsonify, request, send_file
 
 try:
     import yt_dlp
@@ -33,6 +33,8 @@ except ImportError:
     sys.exit(1)
 
 app = Flask(__name__)
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 DOWNLOAD_DIR = os.path.join(os.path.expanduser("~"), "Downloads", "YouTubeDownloader")
 
@@ -140,7 +142,7 @@ def _download_worker(job_id: str, url: str, mode: str) -> None:
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return send_file(os.path.join(BASE_DIR, "index.html"))
 
 
 @app.route("/api/info", methods=["POST"])

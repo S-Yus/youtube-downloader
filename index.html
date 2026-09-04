@@ -340,6 +340,21 @@
   ];
   const isVideoUrl = (u) => VIDEO_RE.some((re) => re.test(u));
 
+  // APIレスポンスをJSONとして解釈する。HTML等が返ってきた場合は
+  // サーバー未起動 / 静的ホスティングと判断して分かりやすいエラーにする。
+  async function parseJson(res) {
+    const text = await res.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw new Error(
+        "サーバーに接続できませんでした。このページはFlaskサーバー経由で開く必要があります。\n" +
+        "「python app.py」を実行して http://localhost:5000 を開いてください。\n" +
+        "(index.htmlを直接開いたり、GitHub Pagesではダウンロード機能は動作しません)"
+      );
+    }
+  }
+
   function resetViews() {
     videoCard.classList.remove("show");
     qualitySection.classList.remove("show");
@@ -381,7 +396,7 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url }),
       });
-      const data = await res.json();
+      const data = await parseJson(res);
       if (!res.ok) throw new Error(data.error || "動画情報の取得に失敗しました。");
 
       currentUrl = url;
@@ -433,7 +448,7 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: currentUrl, mode: selectedMode }),
       });
-      const data = await res.json();
+      const data = await parseJson(res);
       if (!res.ok) throw new Error(data.error || "ダウンロードを開始できませんでした。");
       pollProgress(data.job_id);
     } catch (e) {
@@ -448,7 +463,7 @@
     pollTimer = setInterval(async () => {
       try {
         const res = await fetch("/api/progress/" + jobId);
-        const job = await res.json();
+        const job = await parseJson(res);
         if (!res.ok) throw new Error(job.error || "進捗を取得できませんでした。");
 
         const pct = job.percent || 0;
